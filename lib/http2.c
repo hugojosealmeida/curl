@@ -2348,6 +2348,18 @@ static CURLcode cf_h2_flush(struct Curl_cfilter *cf,
 
   result = h2_progress_egress(cf, data);
 
+  if(result && (result != CURLE_AGAIN) && stream && stream->close_handled &&
+     Curl_bufq_is_empty(&stream->sendbuf)) {
+    /* The transfer's stream is complete. What could not be flushed are
+     * connection-level frames, e.g. the SETTINGS ack, and the peer may
+     * have closed the connection right after completing the stream. This
+     * is no failure of the transfer. Do not use the connection again. */
+    CURL_TRC_CF(data, cf, "[%d] egress failed after stream close, "
+                "closing connection", stream->id);
+    connclose(cf->conn);
+    result = CURLE_OK;
+  }
+
 out:
   if(stream) {
     CURL_TRC_CF(data, cf, "[%d] flush -> %d, "
